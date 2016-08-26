@@ -27,17 +27,8 @@ from . risk import (
     choose_treasury
 )
 
-from empyrical import (
-    alpha,
-    annual_volatility,
-    beta,
-    cum_returns,
-    downside_risk,
-    information_ratio,
-    max_drawdown,
-    sharpe_ratio,
-    sortino_ratio
-)
+from empyrical import SummaryMetrics, cum_returns, annual_volatility
+
 
 log = logbook.Logger('Risk Cumulative')
 
@@ -160,9 +151,13 @@ class RiskMetricsCumulative(object):
             if len(self.algorithm_returns) == 1:
                 self.algorithm_returns = np.append(0.0, self.algorithm_returns)
 
-        self.algorithm_cumulative_returns[dt_loc] = cum_returns(
-            algorithm_returns_series
-        ).iloc[-1]
+        self.benchmark_returns_cont[dt_loc] = benchmark_returns
+        self.benchmark_returns = self.benchmark_returns_cont[:dt_loc + 1]
+        benchmark_returns_series = pd.Series(self.benchmark_returns)
+
+        sm = SummaryMetrics(algorithm_returns_series, factor_returns=benchmark_returns_series)
+
+        self.algorithm_cumulative_returns[dt_loc] = sm.cum_returns.iloc[-1]
 
         algo_cumulative_returns_to_date = \
             self.algorithm_cumulative_returns[:dt_loc + 1]
@@ -184,9 +179,6 @@ class RiskMetricsCumulative(object):
                 self.annualized_mean_returns = np.append(
                     0.0, self.annualized_mean_returns)
 
-        self.benchmark_returns_cont[dt_loc] = benchmark_returns
-        self.benchmark_returns = self.benchmark_returns_cont[:dt_loc + 1]
-        benchmark_returns_series = pd.Series(self.benchmark_returns)
         if self.create_first_day_stats:
             if len(self.benchmark_returns) == 1:
                 self.benchmark_returns = np.append(0.0, self.benchmark_returns)
@@ -233,9 +225,7 @@ algorithm_returns ({algo_count}) in range {start} : {end} on {dt}"
             raise Exception(message)
 
         self.update_current_max()
-        self.benchmark_volatility[dt_loc] = annual_volatility(
-            benchmark_returns_series
-        )
+        self.benchmark_volatility[dt_loc] = sm.annual_volatility()
         self.algorithm_volatility[dt_loc] = annual_volatility(
             algorithm_returns_series
         )
@@ -257,33 +247,13 @@ algorithm_returns ({algo_count}) in range {start} : {end} on {dt}"
         self.excess_returns[dt_loc] = (
             self.algorithm_cumulative_returns[dt_loc] -
             self.treasury_period_return)
-        self.beta[dt_loc] = beta(
-            algorithm_returns_series,
-            benchmark_returns_series
-        )
-        self.alpha[dt_loc] = alpha(
-            algorithm_returns_series,
-            benchmark_returns_series
-        )
-        self.sharpe[dt_loc] = sharpe_ratio(
-            algorithm_returns_series,
-            benchmark_returns_series
-        )
-        self.downside_risk[dt_loc] = downside_risk(
-            algorithm_returns_series,
-            benchmark_returns_series
-        )
-        self.sortino[dt_loc] = sortino_ratio(
-            algorithm_returns_series,
-            benchmark_returns_series
-        )
-        self.information[dt_loc] = information_ratio(
-            algorithm_returns_series,
-            benchmark_returns_series
-        )
-        self.max_drawdown = max_drawdown(
-            algorithm_returns_series
-        )
+        self.beta[dt_loc] = sm.beta
+        self.alpha[dt_loc] = sm.alpha
+        self.sharpe[dt_loc] = sm.sharpe_ratio
+        self.downside_risk[dt_loc] = sm.downside_risk
+        self.sortino[dt_loc] = sm.sortino_ratio
+        self.information[dt_loc] = sm.information_ratio
+        self.max_drawdown = sm.max_drawdown
         self.max_drawdowns[dt_loc] = self.max_drawdown
         self.max_leverage = self.calculate_max_leverage()
         self.max_leverages[dt_loc] = self.max_leverage
